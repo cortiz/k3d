@@ -52,6 +52,7 @@ type RootFlags struct {
 	traceLogging       bool
 	timestampedLogging bool
 	version            bool
+	runtime            string
 }
 
 var flags = RootFlags{}
@@ -80,7 +81,7 @@ All Nodes of a k3d cluster are part of the same docker network.`,
 	rootCmd.PersistentFlags().BoolVar(&flags.debugLogging, "verbose", false, "Enable verbose output (debug logging)")
 	rootCmd.PersistentFlags().BoolVar(&flags.traceLogging, "trace", false, "Enable super verbose output (trace logging)")
 	rootCmd.PersistentFlags().BoolVar(&flags.timestampedLogging, "timestamps", false, "Enable Log timestamps")
-
+	rootCmd.PersistentFlags().StringVar(&flags.runtime, "runtime", "docker", "Select Runtime to use")
 	// add local flags
 	rootCmd.Flags().BoolVar(&flags.version, "version", false, "Show k3d and default k3s version")
 
@@ -198,7 +199,7 @@ func initLogging() {
 }
 
 func initRuntime() {
-	runtime, err := runtimes.GetRuntime("docker")
+	runtime, err := runtimes.GetRuntime(flags.runtime)
 	if err != nil {
 		l.Log().Fatalln(err)
 	}
