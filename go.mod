@@ -41,6 +41,8 @@ require (
 	sigs.k8s.io/yaml v1.2.0
 )
 
+require github.com/spf13/pflag v1.0.5
+
 require github.com/gogo/protobuf v1.3.2 // indirect
 
 require (
