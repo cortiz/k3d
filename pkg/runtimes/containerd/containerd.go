@@ -32,7 +32,7 @@ import (
 	k3d "github.com/rancher/k3d/v5/pkg/types"
 	"io"
 	"os"
-	"strings"
+	"path/filepath"
 	"time"
 )
 
@@ -43,8 +43,42 @@ func (c Containerd) GetHost() string {
 }
 
 func (c Containerd) CreateNode(ctx context.Context, node *k3d.Node) error {
+	if checkNamespace(node) != nil {
+		return fmt.Errorf("unable to create namespace")
+	}
+	namespacedCtx := namespaces.WithNamespace(ctx, NAMESPACE)
+	client, err := getContainerdClient()
 
-	panic("implement me")
+	if err != nil {
+		return fmt.Errorf("unable to list containers: %w", err)
+	}
+	defer client.Close()
+	img, err := client.Pull(namespacedCtx, node.Image, containerd.WithPullUnpack)
+	if err != nil {
+		return fmt.Errorf("unable to pull image %s: %w", node.Image, err)
+	}
+	_, err = k3dNodeToContainerD(client, namespacedCtx, img, node)
+	if err != nil {
+		return fmt.Errorf("unable to create container: %w", err)
+	}
+	return nil
+}
+
+func checkNamespace(node *k3d.Node) error {
+	ctx := context.Background()
+	client, _ := getContainerdClient()
+	ns, err := client.NamespaceService().List(ctx)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(ns); i++ {
+		if NAMESPACE == ns[i] {
+			return nil
+		}
+	}
+	err = client.NamespaceService().Create(ctx, NAMESPACE, node.K3sNodeLabels)
+	defer client.Close()
+	return err
 }
 
 func (c Containerd) DeleteNode(ctx context.Context, node *k3d.Node) error {
@@ -58,7 +92,7 @@ func (c Containerd) RenameNode(ctx context.Context, node *k3d.Node, s string) er
 func (c Containerd) GetNodesByLabel(ctx context.Context, m map[string]string) ([]*k3d.Node, error) {
 	var nodes []*k3d.Node
 	filters := toContainerdFilter(m)
-	namespacedCtx := namespaces.WithNamespace(ctx, namespaces.Default)
+	namespacedCtx := namespaces.WithNamespace(ctx, NAMESPACE)
 	client, err := getContainerdClient()
 	defer client.Close()
 	if err != nil {
@@ -73,28 +107,8 @@ func (c Containerd) GetNodesByLabel(ctx context.Context, m map[string]string) ([
 	return nodes, nil
 }
 
-func toContainerdFilter(m map[string]string) string {
-	var filters []string
-	for key, value := range m {
-		filters = append(filters, fmt.Sprintf("labels.%s==%s", key, value))
-	}
-	return strings.Join(filters, ",")
-}
-
-func containersToNodes(containers []containerd.Container, ctx context.Context) []*k3d.Node {
-	var nodes []*k3d.Node
-	for _, container := range containers {
-		node, err := containerToK3DNode(container, ctx)
-		if err != nil {
-			return nil
-		}
-		nodes = append(nodes, node)
-	}
-	return nodes
-}
-
 func (c Containerd) GetNode(ctx context.Context, node *k3d.Node) (*k3d.Node, error) {
-	panic("implement me")
+	return nil, nil
 }
 
 func (c Containerd) GetNodeStatus(ctx context.Context, node *k3d.Node) (bool, string, error) {
@@ -105,15 +119,7 @@ func (c Containerd) GetNodesInNetwork(ctx context.Context, s string) ([]*k3d.Nod
 	panic("implement me")
 }
 
-func (c Containerd) CreateNetworkIfNotPresent(ctx context.Context, network *k3d.ClusterNetwork) (*k3d.ClusterNetwork, bool, error) {
-	panic("implement me")
-}
-
 func (c Containerd) GetKubeconfig(ctx context.Context, node *k3d.Node) (io.ReadCloser, error) {
-	panic("implement me")
-}
-
-func (c Containerd) DeleteNetwork(ctx context.Context, s string) error {
 	panic("implement me")
 }
 
@@ -127,7 +133,16 @@ func (c Containerd) StopNode(ctx context.Context, node *k3d.Node) error {
 }
 
 func (c Containerd) CreateVolume(ctx context.Context, s string, m map[string]string) error {
-	panic("implement me")
+	cwd, _ := os.Getwd()
+	volPath := filepath.Join(cwd, ".volumes", s)
+	_, err := os.Stat(volPath)
+	if os.IsNotExist(err) {
+		err := os.MkdirAll(volPath, os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c Containerd) DeleteVolume(ctx context.Context, s string) error {
